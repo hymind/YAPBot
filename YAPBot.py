@@ -55,8 +55,16 @@ aliases = {'gless': 'glitchless',
            'inb': 'inbounds',
            'oob': 'out of bounds',
            'unr': 'unrestricted'}
-tol = 0.001
 
+def get_rrs():
+    with open('lb.json', 'r') as f:
+        board = json.load(f)
+        output = {}
+        for category in board:
+            for user in board[category]:
+                output[category] = user
+                break
+        return output
 
 @bot.hybrid_command()
 async def submit(ctx, category: str, time: str):
@@ -68,10 +76,10 @@ async def submit(ctx, category: str, time: str):
             await ctx.send(f"Invalid category! Allowed categories: {allowedCategories}")
             return
     if is_number(time):
-        time = fixticks(float(time))
+        fixtime = fixticks(float(time))
     else:
         try:
-            time = mmss_to_s(time)
+            fixtime = mmss_to_s(time)
         except:
             await ctx.send("Invalid time!")
             return
@@ -80,11 +88,19 @@ async def submit(ctx, category: str, time: str):
         data = json.load(f)
         if user not in data:
             data[user] = {}
-        data[user][category] = time
+        data[user][category] = fixtime
     with open('data.json', 'w') as f:
         json.dump(data, f, indent=4)
     with open('lb.json', 'r') as g:
         lb = json.load(g)
+        rrs = get_rrs()
+        current_holder = rrs[category]
+        current_record = lb[category][current_holder]
+        if not is_number(current_record):
+            current_record= mmss_to_s(current_record)
+        achievementpostifn = bot.get_channel(1259110709975842816)
+        if time < current_record:
+            await achievementpostifn.send(f"New r3ds server record of {fixtime} in {category} by {user}!. This beats {current_holder}'s previous record of {time_to_mmss(current_record)} by {time_to_mmss(float(current_record) - float(time))}.")
         lb[category][user] = time
     with open('lb.json', 'w') as g:
         lb[category] = dict(sorted(lb[category].items(), key=lambda item: item[1]))
@@ -117,8 +133,8 @@ async def lb(ctx, category):
             await ctx.send(f"Invalid category! Allowed categories: {allowedCategories}")
             return
     if is_number(time):
-    with open('lb.json', 'r') as f:
-        board = json.load(f)
+        with open('lb.json', 'r') as f:
+            board = json.load(f)
         output = f"Leaderboard for {category}"
         place = 1
         for user in board[category]:
@@ -131,12 +147,12 @@ async def lb(ctx, category):
 async def rr(ctx):
     with open('lb.json', 'r') as f:
         board = json.load(f)
-        output = f"Current R3ds server records:"
-        for category in board:
-            for user in board[category]:
-                output += f"\n {category}: {time_to_mmss(board[category][user])} by {user}"
-                break
-        await ctx.send(output)
+        output = get_rrs()
+        rrlist = "Current r3ds server records:"
+        for cat in output:
+            user = output[cat]
+            rrlist += f"\n {cat}: {time_to_mmss(board[cat][user])} by {user}"
+        await ctx.send(rrlist)
         return
 
 
