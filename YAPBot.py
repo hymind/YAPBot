@@ -109,6 +109,14 @@ async def pf(ctx, user: str):
 
 @bot.hybrid_command()
 async def lb(ctx, category):
+    category = category.lower()
+    if category not in allowedCategories:
+        if category in aliases:
+            category = aliases[category]
+        else:
+            await ctx.send(f"Invalid category! Allowed categories: {allowedCategories}")
+            return
+    if is_number(time):
     with open('lb.json', 'r') as f:
         board = json.load(f)
         output = f"Leaderboard for {category}"
