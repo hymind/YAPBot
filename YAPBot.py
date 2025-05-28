@@ -31,11 +31,14 @@ def fixtime(time):
     return fixedtime
 
 
-def time_to_mmss(sometime):
-    sometime = float(sometime)
-    minutes = floor(sometime / 60)
-    seconds = sometime % 60
-    return f"{minutes}:{seconds:06.3f}"
+def time_to_mmss(time):
+    time = float(time)
+    minutes = floor(time / 60)
+    seconds = time % 60
+    if minutes > 0:
+        return f"{minutes}:{seconds:06.3f}"
+    else:
+        return seconds
 
 
 @bot.event
@@ -43,7 +46,7 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-allowedCategories = ['glitchless', 'inbounds', 'out of bounds', 'legacy', 'unrestricted', 'isg']
+allowedCategories = ['glitchless', 'mango', 'legacy', 'unrestricted', 'inbounds', 'out of bounds', 'isg']
 aliases = {'gless': 'glitchless',
            'gl': 'glitchless',
            'inb': 'inbounds',
@@ -59,7 +62,31 @@ def get_rrs():
                 output[category] = user
                 break
         return output
+def submit_internal(user, category, time): # For internal use only, inaccessible to users. Assumes sanitized data.
+    with open('data.json', 'r') as f:
+        data = json.load(f)
+        if user not in data:
+            data[user] = {}
+        data[user][category] = time
+        with open('data.json', 'w') as f:
+            json.dump(data, f, indent=4)
+    with open('lb.json', 'r') as g:
+        lb = json.load(g)
+        lb[category][user] = time
+        lb[category] = dict(sorted(lb[category].items(), key=lambda item: item[1]))
+    with open('lb.json', 'w') as g:
+        json.dump(lb, g, indent=4)
+    return
 
+def autosubmit(user, category, time):
+    with open('data.json', 'r') as f:
+        data = json.load(f)
+        for cat in allowedCategories:
+            if cat == 'isg' or allowedCategories.index(cat) <= allowedCategories.index(category):
+                continue
+            if cat not in data[user] or data[user][cat] > time:
+                submit_internal(user, cat, time)
+    return
 @bot.hybrid_command()
 async def submit(ctx, category: str, time: str):
     category = category.lower()
@@ -75,14 +102,7 @@ async def submit(ctx, category: str, time: str):
         await ctx.send("Invalid time!")
         return
     user = str(ctx.author)
-
-    with open('data.json', 'r') as f:
-        data = json.load(f)
-        if user not in data:
-            data[user] = {}
-        data[user][category] = fixedtime
-    with open('data.json', 'w') as f:
-        json.dump(data, f, indent=4)
+    autosubmit(user,category, fixedtime)
 
     with open('lb.json', 'r') as g:
         lb = json.load(g)
@@ -91,11 +111,7 @@ async def submit(ctx, category: str, time: str):
         current_record = fixtime(lb[category][current_holder])
         achievementpostifn = bot.get_channel(1259110709975842816)
         if fixedtime < current_record:
-            await achievementpostifn.send(f"New r3ds server record of `{time}` in {category} by {user}!. This beats {current_holder}'s previous record of `{time_to_mmss(current_record)}` by {time_to_mmss(current_record - fixedtime)}.")
-    with open('lb.json', 'w') as g:
-        lb[category][user] = fixedtime
-        lb[category] = dict(sorted(lb[category].items(), key=lambda item: item[1]))
-        json.dump(lb, g, indent=4)
+            await achievementpostifn.send(f"New r3ds server record of {time_to_mmss(time)} in {category} by {user}!. This beats {current_holder}'s previous record of {time_to_mmss(current_record)} by {time_to_mmss(current_record - fixedtime)}.")
     await ctx.send(f"PB of {time} in {category} added to database successfully!")
     return
 
