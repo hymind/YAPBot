@@ -14,19 +14,21 @@ async def on_ready():
     await bot.tree.sync()
     print(f'Logged in as {bot.user}')
 
-
-def fixticks(sometime):
-    ticks = sometime * (200 / 3)
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+def fixtime(time):
+    if not is_number(time):
+        minutes, seconds = time.split(':')
+        time = int(minutes) * 60 + float(seconds)
+    time = float(time)
+    ticks = time * (200 / 3)
     ticks = round(ticks)
-    sometime = ticks / (200 / 3)
-    return sometime
-
-
-def mmss_to_s(time_str):
-    minutes, seconds = time_str.split(':')
-    time_str = int(minutes) * 60 + float(seconds)
-    time_str = fixticks(time_str)
-    return time_str
+    fixedtime = ticks / (200 / 3)
+    return fixedtime
 
 
 def time_to_mmss(sometime):
@@ -34,14 +36,6 @@ def time_to_mmss(sometime):
     minutes = floor(sometime / 60)
     seconds = sometime % 60
     return f"{minutes}:{seconds:06.3f}"
-
-
-def is_number(s):
-    try:
-        float(s)
-        return True
-    except ValueError:
-        return False
 
 
 @bot.event
@@ -75,37 +69,34 @@ async def submit(ctx, category: str, time: str):
         else:
             await ctx.send(f"Invalid category! Allowed categories: {allowedCategories}")
             return
-    if is_number(time):
-        fixtime = fixticks(float(time))
-    else:
-        try:
-            fixtime = mmss_to_s(time)
-        except:
-            await ctx.send("Invalid time!")
-            return
+    try:
+        fixedtime = fixtime(time)
+    except:
+        await ctx.send("Invalid time!")
+        return
     user = str(ctx.author)
+
     with open('data.json', 'r') as f:
         data = json.load(f)
         if user not in data:
             data[user] = {}
-        data[user][category] = fixtime
+        data[user][category] = fixedtime
     with open('data.json', 'w') as f:
         json.dump(data, f, indent=4)
+
     with open('lb.json', 'r') as g:
         lb = json.load(g)
         rrs = get_rrs()
         current_holder = rrs[category]
-        current_record = lb[category][current_holder]
-        if not is_number(current_record):
-            current_record= mmss_to_s(current_record)
+        current_record = fixtime(lb[category][current_holder])
         achievementpostifn = bot.get_channel(1259110709975842816)
-        if time < current_record:
-            await achievementpostifn.send(f"New r3ds server record of {fixtime} in {category} by {user}!. This beats {current_holder}'s previous record of {time_to_mmss(current_record)} by {time_to_mmss(float(current_record) - float(time))}.")
-        lb[category][user] = time
+        if fixedtime < current_record:
+            await achievementpostifn.send(f"New r3ds server record of `{time}` in {category} by {user}!. This beats {current_holder}'s previous record of `{time_to_mmss(current_record)}` by {time_to_mmss(current_record - fixedtime)}.")
     with open('lb.json', 'w') as g:
+        lb[category][user] = fixedtime
         lb[category] = dict(sorted(lb[category].items(), key=lambda item: item[1]))
         json.dump(lb, g, indent=4)
-        await ctx.send(f"PB of {time_to_mmss(time)} in {category} added to database successfully!")
+    await ctx.send(f"PB of {time} in {category} added to database successfully!")
     return
 
 
@@ -132,15 +123,14 @@ async def lb(ctx, category):
         else:
             await ctx.send(f"Invalid category! Allowed categories: {allowedCategories}")
             return
-    if is_number(time):
-        with open('lb.json', 'r') as f:
-            board = json.load(f)
-        output = f"Leaderboard for {category}"
-        place = 1
-        for user in board[category]:
-            output += f"\n {place}. {time_to_mmss(board[category][user])} by {user}"
-            place = place + 1
-        await ctx.send(output)
+    with open('lb.json', 'r') as f:
+        board = json.load(f)
+    output = f"Leaderboard for {category}"
+    place = 1
+    for user in board[category]:
+        output += f"\n {place}. {time_to_mmss(board[category][user])} by {user}"
+        place = place + 1
+    await ctx.send(output)
 
 
 @bot.hybrid_command()
