@@ -65,11 +65,9 @@ def get_rrs():
 def submit_internal(user, category, time): # For internal use only, inaccessible to users. Assumes sanitized data.
     with open('data.json', 'r') as f:
         data = json.load(f)
-        if user not in data:
-            data[user] = {}
         data[user][category] = time
-        with open('data.json', 'w') as f:
-            json.dump(data, f, indent=4)
+    with open('data.json', 'w') as f:
+        json.dump(data, f, indent=4)
     with open('lb.json', 'r') as g:
         lb = json.load(g)
         lb[category][user] = time
@@ -81,8 +79,10 @@ def submit_internal(user, category, time): # For internal use only, inaccessible
 def autosubmit(user, category, time):
     with open('data.json', 'r') as f:
         data = json.load(f)
+        if user not in data:
+            data[user] = {}
         for cat in allowedCategories:
-            if cat == 'isg' or allowedCategories.index(cat) <= allowedCategories.index(category):
+            if cat == 'isg' or allowedCategories.index(cat) < allowedCategories.index(category):
                 continue
             if cat not in data[user] or data[user][cat] > time:
                 submit_internal(user, cat, time)
@@ -111,7 +111,7 @@ async def submit(ctx, category: str, time: str):
         current_record = fixtime(lb[category][current_holder])
         achievementpostifn = bot.get_channel(1259110709975842816)
         if fixedtime < current_record:
-            await achievementpostifn.send(f"New r3ds server record of {time_to_mmss(time)} in {category} by {user}!. This beats {current_holder}'s previous record of {time_to_mmss(current_record)} by {time_to_mmss(current_record - fixedtime)}.")
+            await achievementpostifn.send(f"New r3ds server record of {time_to_mmss(fixedtime)} in {category} by {user}!. This beats {current_holder}'s previous record of {time_to_mmss(current_record)} by {time_to_mmss(current_record - fixedtime)}.")
     await ctx.send(f"PB of {time} in {category} added to database successfully!")
     return
 
