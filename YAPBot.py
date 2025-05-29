@@ -103,9 +103,11 @@ async def submit(ctx, category: str, time: str):
         return
     user = str(ctx.author)
     autosubmit(user,category, fixedtime)
-
     with open('lb.json', 'r') as g:
         lb = json.load(g)
+        placement = list(lb[category].keys()).index(user)
+        await ctx.send(
+            f"PB of {time} in {category} by {user} added to database successfully! This places at #{placement + 1}, bopping {time_to_mmss(list(lb[category].values())[placement + 1])} by {list(lb[category].keys())[placement + 1]}")
         rrs = get_rrs()
         current_holder = rrs[category]
         current_record = fixtime(lb[category][current_holder])
