@@ -13,15 +13,20 @@ async def on_ready():
     await bot.tree.sync()
     print(f'Logged in as {bot.user}')
 
-# Helper functions. Assume pre-sanitized data
-def load_json(filename):
-    with open(filename, 'r') as f:
-        return json.load(f)
+# constants
+with open('data.json', 'r') as f:
+    data = json.load(f)
+with open('lb.json', 'r') as f:
+    lb = json.load(f)
 
-def save_json(filename, data):
-    with open(filename, 'w') as f:
-        json.dump(data, f, indent=4)
-
+allowedCategories = ('isg', 'glitchless', 'mango', 'legacy', 'unrestricted', 'inbounds', 'out of bounds')
+aliases = {
+    'gless': 'glitchless',
+    'gl': 'glitchless',
+    'inb': 'inbounds',
+    'oob': 'out of bounds',
+    'unr': 'unrestricted'
+}
 def is_number(s):
     try:
         float(s)
@@ -46,11 +51,7 @@ def time_to_mmss(time):
     if minutes > 0:
         return f"{minutes}:{seconds:06.3f}"
     else:
-        return f"{seconds:.3f}"
-
-def normalize_category(cat):
-    cat = cat.lower()
-    return aliases.get(cat, cat)
+        return seconds
 
 def get_rrs():
     board = load_json('lb.json')
@@ -60,34 +61,6 @@ def get_rrs():
             holders[category] = user
             break
     return holders
-
-allowedCategories = ['glitchless', 'mango', 'legacy', 'unrestricted', 'inbounds', 'out of bounds', 'isg']
-aliases = {
-    'gless': 'glitchless',
-    'gl': 'glitchless',
-    'inb': 'inbounds',
-    'oob': 'out of bounds',
-    'unr': 'unrestricted'
-}
-
-def submit_internal(user, category, time, data):
-    data[user][category] = time
-    lb = load_json('lb.json')
-    lb[category][user] = time
-    lb[category] = dict(sorted(lb[category].items(), key=lambda item: item[1]))
-    save_json('lb.json', lb)
-
-def autosubmit(user, category, time):
-    data = load_json('data.json')
-    if user not in data:
-        data[user] = {}
-    for cat in allowedCategories:
-        if cat == 'isg' or allowedCategories.index(cat) < allowedCategories.index(category):
-            continue
-        if cat not in data[user] or data[user][cat] > time:
-            submit_internal(user, cat, time, data)
-    save_json('data.json', data)
-
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
@@ -102,7 +75,11 @@ async def listcommands(ctx):
 
 @bot.hybrid_command()
 async def submit(ctx, category: str, time: str):
-    category = normalize_category(category)
+    global data
+    global lb
+    category = category.lower()
+    if category in aliases:
+        category = aliases[category]
     if category not in allowedCategories:
         await ctx.send(f"Invalid category! Allowed categories: {', '.join(allowedCategories)}")
         return
@@ -112,20 +89,16 @@ async def submit(ctx, category: str, time: str):
         await ctx.send("Invalid time!")
         return
     user = str(ctx.author)
-    if category != 'isg':
-        autosubmit(user, category, fixedtime)
-    else:
-        data = load_json('data.json')
-        if user not in data:
-            data[user] = {}
-        submit_internal(user, category, fixedtime, data)
-        save_json('data.json', data)
-    lb = load_json('lb.json')
-    placement = list(lb[category].keys()).index(user)
-    if placement + 1 < len(lb[category]):
-        await ctx.send (f"PB of {time} in {category} by {user} added to database successfully! This places at #{placement + 1}, bopping {time_to_mmss(list(lb[category].values())[placement + 1])} by {list(lb[category].keys())[placement + 1]}")
-    else:
-        await ctx.send (f"PB of {time} in {category} by {user} added to database successfully!")
+    if user not in data:
+        data[user] = {}
+    originaltime = data[user][category]
+    for cat in allowedCategories:
+        if allowedCategories.index(cat) < allowedCategories.index(category):
+            if cat == 'isg' and category != isg:
+                    continue
+            if cat not in data[user] or data[user][cat] > time:
+                data[user][category] = fixedtime
+                lb[category][user] = fixedtime
     rrs = get_rrs()
     current_holder = rrs[category]
     current_record = fixtime(lb[category][current_holder])
@@ -136,11 +109,25 @@ async def submit(ctx, category: str, time: str):
             f"Previous record by {current_holder}: {time_to_mmss(current_record)}\n"
             f"Beaten by {time_to_mmss(current_record - fixedtime)}."
         )
-
+    with open('data.json', 'w') as f:
+        json.dump(f, data)
+    with open('lb.json', 'w') as f:
+        json.dump(lb, f)
+    placement = list(lb[category].keys()).index(user)
+    if placement + 1 < len(lb[category]):
+        if originaltime is not Null:
+            if list(lb[category].values())[placement + 1] > originaltime:
+                await ctx.send (f"PB of {time} in {category} by {user} added to database successfully! This places at #{placement + 1}, bopping {time_to_mmss(list(lb[category].values())[placement + 1])} by {list(lb[category].keys())[placement + 1]}")
+            else:
+                await ctx.send (f"PB of {time} in {category} by {user} added to database successfully! This places at #{placement + 1}, improving on their last pb by {time_to_mmss(originaltime - fixedtime)}")
+        else:
+            await ctx.send (f"PB of {time} in {category} by {user} added to database successfully! This is their first (recorded) run in this category!")
+    else:
+        await ctx.send (f"PB of {time} in {category} by {user} added to database successfully!")
+    return
 
 @bot.hybrid_command()
 async def pf(ctx, user: str):
-    data = load_json('data.json')
     if user not in data:
         await ctx.send("User not found in database! Make sure you spelled their name correctly.")
         return
@@ -155,22 +142,22 @@ async def pf(ctx, user: str):
 
 @bot.hybrid_command()
 async def lb(ctx, category):
-    category = normalize_category(category)
+    category = category.lower
+    if category in aliases:
+        category = aliases[category]
     if category not in allowedCategories:
         await ctx.send(f"Invalid category! Allowed categories: {', '.join(allowedCategories)}")
         return
-    board = load_json('lb.json')
     output = f"Leaderboard for {category}:"
-    for place, user in enumerate(board[category], start=1):
-        output += f"\n {place}. {time_to_mmss(board[category][user])} by {user}"
+    for place, user in enumerate(lb[category], start=1):
+        output += f"\n {place}. {time_to_mmss(lb[category][user])} by {user}"
     await ctx.send(output)
 
 
 @bot.hybrid_command()
 async def rr(ctx):
-    board = load_json('lb.json')
     rrs = get_rrs()
     output = "Current r3ds serer records:"
     for cat, user in rrs.items():
-        output += f"\n {cat}: {time_to_mmss(board[cat][user])} by {user}"
+        output += f"\n {cat}: {time_to_mmss(lb[cat][user])} by {user}"
     await ctx.send(output)
