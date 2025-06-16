@@ -28,6 +28,7 @@ with open('gb.json', 'r') as f:
     gboard = json.load(f)
 
 allowedCategories = ("isg", "glitchless", "mango", "legacy", "unrestricted", "inbounds", "out of bounds")
+seriousCategories = ("glitchless", "legacy", "unrestricted", "inbounds", "out of bounds")
 aliases = {
     "gless": "glitchless",
     "gl": "glitchless",
@@ -37,17 +38,27 @@ aliases = {
     "nosla": "legacy",
     "nsla": "legacy"
 }
-splits = ('00/01', '02/03', '04/05', '06/07', '08', '09', '10', '11/12', '13', '14', '15', '16', '17', '18', '19', 'e00', 'e01', 'e02')
+
+splits = (
+'00/01', '02/03', '04/05', '06/07', '08', '09', '10', '11/12', '13', '14', '15', '16', '17', '18', '19', 'e00', 'e01',
+'e02')
+
+
 # helpers (sanitize data before using)
+
 def validatecat(cat):
     cat = cat.lower()
     return aliases.get(cat, cat)
+
+
 def is_number(s):
     try:
         float(s)
         return True
     except ValueError:
         return False
+
+
 def fixtime(time):
     if not is_number(time):
         minutes, seconds = time.split(':')
@@ -57,6 +68,8 @@ def fixtime(time):
     ticks = round(ticks)
     fixedtime = ticks / (200 / 3)
     return fixedtime
+
+
 def time_to_mmss(time):
     time = float(time)
     minutes = floor(time / 60)
@@ -65,6 +78,8 @@ def time_to_mmss(time):
         return f"{minutes}:{seconds:06.3f}"
     else:
         return f"{seconds:.3f}"
+
+
 def get_rrs():
     holders = {}
     for category in board:
@@ -72,38 +87,47 @@ def get_rrs():
             holders[category] = user
             break
     return holders
+
+
 def announce(user, cat, time, place, truetime, message):
     bopped = next((k for k, v in board[cat].items() if v == truetime), None)
-    if place < len(board[cat]):
-        if truetime is not None:
-            if bopped == user:
-                message += f", improving on your last pb by {time_to_mmss(truetime - time)}"
-            else:
-                message += f", bopping {time_to_mmss(truetime)} by {bopped}"
-        else:
-            message += f"\n This is your first (recorded) run in said category, bopping {time_to_mmss(truetime)} by {bopped}!"
-    else:
+
+    if not place < len(board[cat]):
         message += "(last place)"
+    elif truetime is None:
+        message += f"\n This is your first (recorded) run in said category, bopping {time_to_mmss(truetime)} by {bopped}!"
+    elif bopped != user:
+        message += f", bopping {time_to_mmss(truetime)} by {bopped}"
+    else:
+        message += f", improving on your last pb by {time_to_mmss(truetime - time)}"
     return message
+
+
 def get_rsob(category):
     rsob = 0
     for split in rg[category]:
         rsob += rg[category][split][1]
     return time_to_mmss(rsob)
+
+
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
+
+
 @bot.hybrid_command()
 async def listcommands(ctx):
     await ctx.send("""Command list:
         !submit [category] [time] - Submits a new PB
-        !pf [user] - Shows profile for a given user
-        !lb [category] - Shows leaderboard for a given category
-        !rr - Shows current server-wide records
+        !profile [user] (aliases: !pf) - Shows profile for a given user
+        !leaderboard [category] (aliases: !lb) - Shows leaderboard for a given category
+        !r3dsrecords (aliases: !rr, !rainbowride, !rainbowroad) - Shows current server-wide records
         !whatif [category] [time] - Shows what would happen if you submitted a certain time
         !updategolds - Update your golds for a category
         !viewgolds - View your own golds or those of another user
-        !rgolds - View server best split times (similar to cgolds)""")
+        !r3dsgolds (aliases: !rgolds, !rg)- View server best split times (similar to cgolds)""")
+
+
 @bot.hybrid_command()
 async def submit(ctx, category: str, time: str):
     global data
@@ -128,7 +152,7 @@ async def submit(ctx, category: str, time: str):
         originaltime = None
     for cat in allowedCategories:
         if allowedCategories.index(cat) < allowedCategories.index(category):
-            if cat == 'isg' and category != isg:
+            if cat not in seriousCategories and category in seriousCategories:
                 continue
             if cat not in data[user] or data[user][cat] > time:
                 data[user][category] = fixedtime
@@ -144,15 +168,17 @@ async def submit(ctx, category: str, time: str):
             f"Beaten by {time_to_mmss(current_record - fixedtime)}."
         )
     with open('data.json', 'w') as f:
-        json.dump(data,f,indent=4)
+        json.dump(data, f, indent=4)
     with open('lb.json', 'w') as f:
-        json.dump(board, f,indent=4)
+        json.dump(board, f, indent=4)
     placement = list(board[category].keys()).index(user) + 1
     await ctx.send(announce(user, category, fixedtime, placement, originaltime,
                             f"PB of {time} in {cat} by {user} added to database successfully! \nThis places at {[placement]}"))
     return
-@bot.hybrid_command()
-async def pf(ctx, user=None):
+
+
+@bot.hybrid_command(aliases=["pf"])
+async def profile(ctx, user=None):
     if user == None:
         user = str(ctx.author)
     if user not in data:
@@ -165,8 +191,10 @@ async def pf(ctx, user=None):
     for cat, pb_time in data[user].items():
         output += f"\n {cat}: {time_to_mmss(pb_time)}"
     await ctx.send(output)
-@bot.hybrid_command()
-async def lb(ctx, category):
+
+
+@bot.hybrid_command(aliases=["lb"])
+async def leaderboard(ctx, category):
     try:
         category = validatecat(category)
     except (KeyError, ValueError):
@@ -176,13 +204,17 @@ async def lb(ctx, category):
     for place, user in enumerate(board[category], start=1):
         output += f"\n{place}. {time_to_mmss(board[category][user])} by {user}"
     await ctx.send(output)
-@bot.hybrid_command()
-async def rr(ctx):
+
+
+@bot.hybrid_command(aliases=["rr", "rainbowride", "rainbowroad"])
+async def r3dsrecords(ctx):
     rrs = get_rrs()
-    output = "Current r3ds serer records:"
+    output = "Current r3ds server records:"  # epic typo
     for cat, user in rrs.items():
         output += f"\n {cat}: {time_to_mmss(board[cat][user])} by {user}"
     await ctx.send(output)
+
+
 @bot.hybrid_command()
 async def whatif(ctx, category, time):
     try:
@@ -209,6 +241,8 @@ async def whatif(ctx, category, time):
     except KeyError:
         truetime = None
     await ctx.send(announce(user, category, fixedtime, placement, truetime, message))
+
+
 @bot.hybrid_command()
 async def updategolds(ctx, category):
     global golds
@@ -224,8 +258,10 @@ async def updategolds(ctx, category):
         if category in golds[user]:
             sob = sum(list(golds[user][category].values()))
     await ctx.send("Please copy+paste your golds from LiveSplit")
+
     def check(message):
         return message.author == ctx.author and message.channel == ctx.channel
+
     try:
         rawgolds = await bot.wait_for('message', check=check, timeout=727)
     except asyncio.TimeoutError:
@@ -249,15 +285,18 @@ async def updategolds(ctx, category):
             rgolds_beaten.append(split)
     if rgolds_beaten != []:
         achievementpostifn = bot.get_channel(1259110709975842816)
-        await achievementpostifn.send(f"New rgolds in {category} chambers {','.join(rgolds_beaten)} by {user}.\n This brings the rsob down to {get_rsob(category)}")
+        await achievementpostifn.send(
+            f"New rgolds in {category} chambers {','.join(rgolds_beaten)} by {user}.\n This brings the rsob down to {get_rsob(category)}")
         with open('rgolds.json', 'w') as f:
             json.dump(rg, f, indent=4)
-    with open('golds.json','w') as f:
-        json.dump(golds,f,indent=4)
+    with open('golds.json', 'w') as f:
+        json.dump(golds, f, indent=4)
     newsob = sum(list(goldtable.values()))
     if sob is not None:
         await ctx.send(f"SoB improved by {time_to_mmss(sob - newsob)}!")
     return
+
+
 @bot.hybrid_command()
 async def viewgolds(ctx, category, user=None):
     if user == None:
@@ -275,8 +314,10 @@ async def viewgolds(ctx, category, user=None):
         await ctx.send(output)
     except KeyError:
         await ctx.send("No golds listed!")
-@bot.hybrid_command()
-async def rgolds(ctx, category):
+
+
+@bot.hybrid_command(aliases=["rgolds", "rg"])
+async def r3dsgolds(ctx, category):
     try:
         category = validatecat(category)
     except (KeyError, ValueError):
