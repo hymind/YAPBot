@@ -20,6 +20,7 @@ with open('lb.json', 'r') as f:
     lb = json.load(f)
 
 allowedCategories = ('isg', 'glitchless', 'mango', 'legacy', 'unrestricted', 'inbounds', 'out of bounds')
+seriousCategories = ('glitchless', 'legacy', 'unrestricted', 'inbounds', 'out of bounds')
 aliases = {
     'gless': 'glitchless',
     'gl': 'glitchless',
@@ -94,8 +95,8 @@ async def submit(ctx, category: str, time: str):
     originaltime = data[user][category]
     for cat in allowedCategories:
         if allowedCategories.index(cat) < allowedCategories.index(category):
-            if cat == 'isg' and category != isg:
-                    continue
+            if cat in seriousCategories && category not in seriousCategories:
+                continue
             if cat not in data[user] or data[user][cat] > time:
                 data[user][category] = fixedtime
                 lb[category][user] = fixedtime
@@ -114,20 +115,24 @@ async def submit(ctx, category: str, time: str):
     with open('lb.json', 'w') as f:
         json.dump(lb, f)
     placement = list(lb[category].keys()).index(user)
-    if placement + 1 < len(lb[category]):
-        if originaltime is not Null:
-            if list(lb[category].values())[placement + 1] > originaltime:
-                await ctx.send (f"PB of {time} in {category} by {user} added to database successfully! This places at #{placement + 1}, bopping {time_to_mmss(list(lb[category].values())[placement + 1])} by {list(lb[category].keys())[placement + 1]}")
-            else:
-                await ctx.send (f"PB of {time} in {category} by {user} added to database successfully! This places at #{placement + 1}, improving on their last pb by {time_to_mmss(originaltime - fixedtime)}")
-        else:
-            await ctx.send (f"PB of {time} in {category} by {user} added to database successfully! This is their first (recorded) run in this category!")
-    else:
+
+    if placement + 1 >= len(lb[category]):
         await ctx.send (f"PB of {time} in {category} by {user} added to database successfully!")
+    elif originaltime is Null:
+        await ctx.send (f"PB of {time} in {category} by {user} added to database successfully! This is their first (recorded) run in this category!")
+
+    elif list(lb[category].values())[placement + 1] > originaltime:
+        await ctx.send (f"PB of {time} in {category} by {user} added to database successfully! This places at #{placement + 1}, bopping {time_to_mmss(list(lb[category].values())[placement + 1])} by {list(lb[category].keys())[placement + 1]}")
+    else:
+        await ctx.send (f"PB of {time} in {category} by {user} added to database successfully! This places at #{placement + 1}, improving on their last pb by {time_to_mmss(originaltime - fixedtime)}")
     return
 
 @bot.hybrid_command()
 async def pf(ctx, user: str):
+    await profile(ctx, user)
+
+@bot.hybrid_command()
+async def profile(ctx, user: str):
     if user not in data:
         await ctx.send("User not found in database! Make sure you spelled their name correctly.")
         return
@@ -139,9 +144,12 @@ async def pf(ctx, user: str):
         output += f"\n {cat}: {time_to_mmss(pb_time)}"
     await ctx.send(output)
 
+@bot.hybrid_command()
+async def lb(ctx):
+    await leaderboard(ctx)
 
 @bot.hybrid_command()
-async def lb(ctx, category):
+async def leaderboard(ctx, category):
     category = category.lower
     if category in aliases:
         category = aliases[category]
@@ -155,9 +163,17 @@ async def lb(ctx, category):
 
 
 @bot.hybrid_command()
+async def rainbowroad(ctx):
+    await r3dsrecords(ctx)
+
+@bot.hybrid_command()
 async def rr(ctx):
-    rrs = get_rrs()
-    output = "Current r3ds serer records:"
-    for cat, user in rrs.items():
+    await r3dsrecords()
+
+@bot.hybrid_command()
+async def r3dsrecords(ctx):
+    r3dsrecords = get_rrs()
+    output = "Current r3ds server records:"
+    for cat, user in r3dsrecords.items():
         output += f"\n {cat}: {time_to_mmss(lb[cat][user])} by {user}"
     await ctx.send(output)
